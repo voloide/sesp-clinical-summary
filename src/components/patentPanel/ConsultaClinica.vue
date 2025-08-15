@@ -18,21 +18,19 @@ import headerComponent from './headerComponent.vue';
 import consultaClinicaService from 'src/services/patient/ConsultaClinicaService';
 import BodyComponent from './bodyComponent.vue';
 
-// Inject patient data
+// ⬇️ NOVO: controlo de acesso por variável
+import { useAccessControl } from 'src/access/useAccessControl';
+const { loadFromSnapshot, filterByAccess } = useAccessControl();
+
 const patient = inject('selectedPatient');
 const loading = ref(true); // Loading state
-
-// Reactive data for Clinical Consultation
 const consultaClinicaData = ref([]);
-
-// Track collapsed states for each section
 const collapsedSections = ref([]);
 
-// Toggle collapse state for a section
 function toggleSection(index) {
   collapsedSections.value[index] = !collapsedSections.value[index];
 }
-// Helper function to format date to dd-MM-yyyy
+
 function formatDate(dateString) {
   if (!dateString) return null;
   const date = new Date(dateString);
@@ -45,9 +43,18 @@ function formatDate(dateString) {
 
 // Fetch Clinical Consultation Data
 onMounted(async () => {
-  if (!patient.value) {
+  if (!patient?.value) {
     console.error('Patient data is missing.');
+    loading.value = false;
     return;
+  }
+
+  // ⬇️ NOVO: carregar permissões a partir dos roles guardados na sessão
+  try {
+    const roles = JSON.parse(sessionStorage.getItem('roles') || '[]');
+    loadFromSnapshot(roles.map((r) => r.uuid));
+  } catch {
+    loadFromSnapshot([]);
   }
 
   try {
@@ -59,10 +66,10 @@ onMounted(async () => {
       weight,
       height,
       bmi,
-      mds,
-      pregnancy,
-      breastfeeding,
-      programEnrollment,
+      mds,              // (DSD)
+      pregnancy,        // Provenance: Pregnant at last clinical consultation
+      breastfeeding,    // Provenance: Breastfeeding at last clinical consultation
+      programEnrollment // Provenance: Last State from Program Enrollment
     ] = await Promise.all([
       consultaClinicaService.getMostRecentConsultation(patientId),
       consultaClinicaService.getNextAppointment(patientId),
@@ -75,175 +82,139 @@ onMounted(async () => {
       consultaClinicaService.getProgramEnrollment(patientId),
     ]);
 
-    consultaClinicaData.value = [
+    // ⬇️ NOVO: sections com permissionKey por variável (Annex)
+    const sections = [
       {
         title: 'Data da consulta mais recente',
+        permissionKey: 'CONSULT_LAST',
         isList: true,
         items:
           mostRecentConsultation.length > 0
             ? mostRecentConsultation.map((item) => ({
-                value: formatDate(item.encounterDatetime),
+                value: formatDate(item.encounterDatetime) || 'Sem dados no SESP',
                 source: {
                   form: item.form?.display || 'Sem formulário',
                   date: formatDate(item.encounterDatetime) || 'Sem data',
-                  location: item.location.display || 'Sem localidade',
+                  location: item.location?.display || 'Sem localidade',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA CLINICA', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA CLINICA', date: '', location: '' } }],
       },
       {
         title: 'Data da próxima consulta',
+        permissionKey: 'CONSULT_NEXT',
         isList: true,
         items:
           nextAppointment.length > 0
             ? nextAppointment.map((item) => ({
-                value: formatDate(item.value),
+                value: formatDate(item.value) || 'Sem dados no SESP',
                 source: {
-                  form: item.source || 'Sem formulário',
+                  form: item.source || item.encounter?.form?.display || 'Sem formulário',
                   date: formatDate(item.obsDatetime) || 'Sem data',
                   location: item.encounter?.location?.name || 'Sem localidade',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA CLINICA', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA CLINICA', date: '', location: '' } }],
       },
       {
         title: 'Peso',
+        permissionKey: 'ANTROP_WEIGHT',
         isList: true,
         items:
           weight.length > 0
             ? weight.map((item) => ({
-                value: item.value || 'Sem dados no SESP',
+                value: item.value ?? 'Sem dados no SESP',
                 source: {
                   form: item.encounter?.form?.display || 'Sem formulário',
                   date: formatDate(item.obsDatetime) || 'Sem data',
                   location: item.encounter?.location?.name || 'Sem localidade',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA CLINICA', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA CLINICA', date: '', location: '' } }],
       },
       {
         title: 'Altura',
+        permissionKey: 'ANTROP_HEIGHT',
         isList: true,
         items:
           height.length > 0
             ? height.map((item) => ({
-                value: item.value || 'Sem dados no SESP',
+                value: item.value ?? 'Sem dados no SESP',
                 source: {
                   form: item.encounter?.form?.display || 'Sem formulário',
                   date: formatDate(item.obsDatetime) || 'Sem data',
                   location: item.encounter?.location?.name || 'Sem localidade',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA CLINICA', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA CLINICA', date: '', location: '' } }],
       },
       {
         title: 'BMI',
+        permissionKey: 'ANTROP_BMI',
         isList: true,
         items:
           bmi.length > 0
             ? bmi.map((item) => ({
-                value: item.value || 'Sem dados no SESP',
+                value: item.value ?? 'Sem dados no SESP',
                 source: {
                   form: item.encounter?.form?.display || 'Sem formulário',
                   date: formatDate(item.obsDatetime) || 'Sem data',
                   location: item.encounter?.location?.name || 'Sem localidade',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA CLINICA', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA CLINICA', date: '', location: '' } }],
       },
-
       {
         title: 'MDS',
+        permissionKey: 'DSD',
         isList: true,
         items:
           mds.length > 0
             ? mds.map((item) => ({
-                value: `${item.mds} (${item.state || 'Sem estado'})`,
+                value: `${item.mds ?? 'MDS não especificado'}${item.state ? ` (${item.state})` : ''}`,
                 source: {
                   form: item.source || 'Sem formulário',
                   date: formatDate(item.date) || 'Sem data',
                   location: item.hf || 'Sem localidade',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA CLINICA', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA CLINICA', date: '', location: '' } }],
       },
-
       {
         title: 'Gravidez na última consulta clínica',
+        permissionKey: 'PROV_PREG_AT_LAST',
         isList: true,
         items:
           pregnancy.length > 0
-            ? [
-                {
-                  value: pregnancy[0].value?.display || 'Sem dados no SESP',
-                  source: {
-                    form: pregnancy[0].encounter?.form?.display || 'Sem formulário',
-                    date: formatDate(pregnancy[0].obsDatetime) || 'Sem data',
-                    location: pregnancy[0].encounter?.location?.name || 'Sem localidade',
-                  },
+            ? [{
+                value: pregnancy[0].value?.display || 'Sem dados no SESP',
+                source: {
+                  form: pregnancy[0].encounter?.form?.display || 'Sem formulário',
+                  date: formatDate(pregnancy[0].obsDatetime) || 'Sem data',
+                  location: pregnancy[0].encounter?.location?.name || 'Sem localidade',
                 },
-              ]
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA CLINICA', date: '', location: '' },
-                },
-              ],
+              }]
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA CLINICA', date: '', location: '' } }],
       },
       {
         title: 'Lactante na última consulta clínica',
+        permissionKey: 'PROV_BF_AT_LAST',
         isList: true,
         items:
           breastfeeding.length > 0
-            ? [
-                {
-                  value: breastfeeding[0].value?.display || 'Sem dados no SESP',
-                  source: {
-                    form: breastfeeding[0].encounter?.form?.display || 'Sem formulário',
-                    date: formatDate(breastfeeding[0].obsDatetime) || 'Sem data',
-                    location: breastfeeding[0].encounter?.location?.name || 'Sem localidade',
-                  },
+            ? [{
+                value: breastfeeding[0].value?.display || 'Sem dados no SESP',
+                source: {
+                  form: breastfeeding[0].encounter?.form?.display || 'Sem formulário',
+                  date: formatDate(breastfeeding[0].obsDatetime) || 'Sem data',
+                  location: breastfeeding[0].encounter?.location?.name || 'Sem localidade',
                 },
-              ]
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA CLINICA', date: '', location: '' },
-                },
-              ],
+              }]
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA CLINICA', date: '', location: '' } }],
       },
       {
         title: 'Programa',
+        permissionKey: 'PROV_LAST_STATE', // "Provenance: Last State from Program Enrollment"
         isList: true,
         items:
           programEnrollment.length > 0
@@ -255,18 +226,16 @@ onMounted(async () => {
                   location: 'Sem localidade',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: {
-                    form: 'FICHA CLINICA',
-                    date: '',
-                    location: '',
-                  },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA CLINICA', date: '', location: '' } }],
       },
     ];
+
+    // ⬇️ NOVO: aplicar filtro por permissões do utilizador
+    const filtered = filterByAccess(sections);
+    consultaClinicaData.value = filtered.length ? filtered : [
+      { title: 'Dados da Consulta Clínica', isList: false, value: 'Sem permissões para visualizar estes dados', source: { form: '', date: '' } }
+    ];
+
   } catch (error) {
     console.error('Error fetching clinical consultation data:', error);
   } finally {
@@ -274,6 +243,7 @@ onMounted(async () => {
   }
 });
 </script>
+
 
 <style scoped>
 .q-card {

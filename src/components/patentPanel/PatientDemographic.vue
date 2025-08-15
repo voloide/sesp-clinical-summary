@@ -6,8 +6,8 @@
         <!-- Header Section -->
         <header-component />
 
-        <!-- Demographics Section -->
-        <q-card flat bordered class="q-mb-md">
+        <!-- Data de Nascimento -->
+        <q-card flat bordered class="q-mb-md" v-if="can('IDENT_BIRTHDATE')">
           <q-card-section class="q-py-sm bg-light-green-1 cursor-pointer">
             <div class="col text-weight-bold text-h6">Data de Nascimento</div>
           </q-card-section>
@@ -26,8 +26,8 @@
           </q-card-section>
         </q-card>
 
-        <!-- Address Section -->
-        <q-card flat bordered class="q-mb-md">
+        <!-- Endereços -->
+        <q-card flat bordered class="q-mb-md" v-if="can('IDENT_ADDRESS')">
           <q-card-section class="q-py-sm bg-light-green-1 cursor-pointer">
             <div class="col text-weight-bold text-h6">Endereços</div>
           </q-card-section>
@@ -69,18 +69,15 @@
           </q-card-section>
         </q-card>
 
-        <!-- Contacts Section -->
-        <q-card flat bordered>
+        <!-- Contactos -->
+        <q-card flat bordered v-if="can('IDENT_PHONE')">
           <q-card-section class="q-py-sm bg-light-green-1 cursor-pointer">
             <div class="col text-weight-bold text-h6">Contactos</div>
           </q-card-section>
           <q-separator />
           <q-card-section>
             <q-list dense>
-              <q-item
-                v-for="(attribute, index) in filteredAttributes"
-                :key="index"
-              >
+              <q-item v-for="(attribute, index) in filteredAttributes" :key="index">
                 <q-item-section>
                   <div class="row items-center">
                     <div class="col-auto text-weight-bold">
@@ -102,30 +99,45 @@
             </q-list>
           </q-card-section>
         </q-card>
+
+        <!-- Mensagem quando não há qualquer permissão deste bloco -->
+        <q-card flat bordered v-if="!can('IDENT_BIRTHDATE') && !can('IDENT_ADDRESS') && !can('IDENT_PHONE')">
+          <q-card-section class="text-caption">
+            Sem permissões para visualizar dados demográficos.
+          </q-card-section>
+        </q-card>
       </q-page>
     </q-page-container>
   </q-layout>
 </template>
 
 <script setup>
-import { computed, inject } from 'vue';
+import { computed, inject, onMounted } from 'vue';
 import headerComponent from './headerComponent.vue';
 
+// ⬇️ acesso por variável
+import { useAccessControl } from 'src/access/useAccessControl';
+const { loadFromSnapshot, can } = useAccessControl();
+
 const patient = inject('selectedPatient');
+
+onMounted(() => {
+  try {
+    const roles = JSON.parse(sessionStorage.getItem('roles') || '[]');
+    loadFromSnapshot(roles.map((r) => r.uuid));
+  } catch {
+    loadFromSnapshot([]);
+  }
+});
 
 const formattedBirthdate = computed(() => {
   const birthdate = patient.value?.person?.birthdate;
   if (!birthdate) return null;
-
   const date = new Date(birthdate);
-  return date.toLocaleDateString('pt-PT', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  return date.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric' });
 });
 
-// Filter attributes to only include those where attributeType.display contains "Telefone"
+// Apenas atributos que contenham "Telefone"
 const filteredAttributes = computed(() => {
   return patient.value?.person?.attributes?.filter(
     (attribute) => attribute.attributeType?.display?.includes('Telefone')
@@ -134,14 +146,7 @@ const filteredAttributes = computed(() => {
 </script>
 
 <style scoped>
-.q-card {
-  border: 1px solid #e0e0e0;
-}
-.text-lg {
-  font-size: 1.2em;
-}
-.text-h6 {
-  font-size: 1.1em;
-  font-weight: bold;
-}
+.q-card { border: 1px solid #e0e0e0; }
+.text-lg { font-size: 1.2em; }
+.text-h6 { font-size: 1.1em; font-weight: bold; }
 </style>

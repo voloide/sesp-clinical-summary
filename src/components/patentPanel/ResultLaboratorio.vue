@@ -17,6 +17,9 @@ import { inject, ref, onMounted } from 'vue';
 import headerComponent from './headerComponent.vue';
 import resultadosLaboratoriaisService from 'src/services/patient/resultadosLaboratoriaisService';
 import BodyComponent from './bodyComponent.vue';
+import { useAccessControl } from 'src/access/useAccessControl'; // ⬅️ novo
+
+const { loadFromSnapshot, filterByAccess } = useAccessControl(); // ⬅️ novo
 
 // Inject patient data
 const patient = inject('selectedPatient');
@@ -52,451 +55,187 @@ onMounted(async () => {
   }
 
   try {
-    const allCD4CoverageFLG =
-      await resultadosLaboratoriaisService.allCD4CoverageFLG(
-        patient.value.uuid
-      );
-    const allCD4CoverageFSR =
-      await resultadosLaboratoriaisService.allCD4CoverageFSR(
-        patient.value.uuid
-      );
-    const allCD4AbsFSR = await resultadosLaboratoriaisService.allCD4AbsFSR(
-      patient.value.uuid
-    );
-    const allCD4AbsFLG = await resultadosLaboratoriaisService.allCD4AbsFLG(
-      patient.value.uuid
-    );
+    const roles = JSON.parse(sessionStorage.getItem('roles') || '[]');
+    loadFromSnapshot(roles.map((r) => r.uuid));
+  } catch { loadFromSnapshot([]); }
 
-    console.log('allCD4AbsFSR: ', allCD4AbsFSR);
-    console.log('allCD4AbsFLG: ', allCD4AbsFLG);
+  try {
+    // ------- CHAMADAS AOS SERVIÇOS (igual ao teu código) -------
+    const allCD4CoverageFLG = await resultadosLaboratoriaisService.allCD4CoverageFLG(patient.value.uuid);
+    const allCD4CoverageFSR = await resultadosLaboratoriaisService.allCD4CoverageFSR(patient.value.uuid);
+    const allCD4AbsFSR      = await resultadosLaboratoriaisService.allCD4AbsFSR(patient.value.uuid);
+    const allCD4AbsFLG      = await resultadosLaboratoriaisService.allCD4AbsFLG(patient.value.uuid);
+    const allGenexpert      = await resultadosLaboratoriaisService.allGenexpert(patient.value.uuid);
+    const allGenexpertFC    = await resultadosLaboratoriaisService.allGenexpertFC(patient.value.uuid);
+    const allBaciloscopia   = await resultadosLaboratoriaisService.allBaciloscopia(patient.value.uuid);
+    const allBaciloscopiaFC = await resultadosLaboratoriaisService.allBaciloscopiaFC(patient.value.uuid);
+    const { rastreioTBLAMLabGeral, rastreioTBLAMELab, rastreioTBLAMFichaClinica } =
+      await resultadosLaboratoriaisService.allTBLAM(patient.value.uuid);
+    const allHGB = await resultadosLaboratoriaisService.allHGB(patient.value.uuid);
+    const allAST = await resultadosLaboratoriaisService.allAST(patient.value.uuid);
+    const allALT = await resultadosLaboratoriaisService.allALT(patient.value.uuid);
+    const allAMI = await resultadosLaboratoriaisService.allAMI(patient.value.uuid);
+    const allGLC = await resultadosLaboratoriaisService.allGLC(patient.value.uuid);
+    const allPCR = await resultadosLaboratoriaisService.allPCR(patient.value.uuid);
+    const allVLs = await resultadosLaboratoriaisService.allVLs(patient.value.uuid);
 
-    const allGenexpert = await resultadosLaboratoriaisService.allGenexpert(
-      patient.value.uuid
-    );
-    const allGenexpertFC = await resultadosLaboratoriaisService.allGenexpertFC(
-      patient.value.uuid
-    );
-    const allBaciloscopia =
-      await resultadosLaboratoriaisService.allBaciloscopia(patient.value.uuid);
-    const allBaciloscopiaFC =
-      await resultadosLaboratoriaisService.allBaciloscopiaFC(
-        patient.value.uuid
-      );
-    const {
-      rastreioTBLAMLabGeral,
-      rastreioTBLAMELab,
-      rastreioTBLAMFichaClinica,
-    } = await resultadosLaboratoriaisService.allTBLAM(patient.value.uuid);
-    const allHGB = await resultadosLaboratoriaisService.allHGB(
-      patient.value.uuid
-    );
-    const allAST = await resultadosLaboratoriaisService.allAST(
-      patient.value.uuid
-    );
-    const allALT = await resultadosLaboratoriaisService.allALT(
-      patient.value.uuid
-    );
-    const allAMI = await resultadosLaboratoriaisService.allAMI(
-      patient.value.uuid
-    );
-    const allGLC = await resultadosLaboratoriaisService.allGLC(
-      patient.value.uuid
-    );
-    const allPCR = await resultadosLaboratoriaisService.allPCR(
-      patient.value.uuid
-    );
-
-    const allVLs = await resultadosLaboratoriaisService.allVLs(
-      patient.value.uuid
-    );
-
-    allVLs;
-
-    // Populate resultadosData
-    resultadosData.value = [
+    // ------- SECTIONS COM PERMISSION KEYS (apenas acrescentámos permissionKey) -------
+    const sections = [
       {
         title: 'Carga Viral (Cópias/ml)',
+        permissionKey: 'VL',
         isList: true,
-        items:
-          allVLs.length > 0
-            ? allVLs.map((item) => ({
-                value: `${
-                  item.value?.display ? item.value?.display : item.value
-                } ${item.comment ? `${item.comment}` : ''}`,
-                source: {
-                  form:
-                    item.encounter?.form?.display ===
-                    'FORMULARIO ELECTRONICO DE LABORATORIO'
-                      ? 'e-LAB'
-                      : item.encounter?.form?.display || 'Sem dados no SESP',
-                  date: formatDate(item.obsDatetime) || '',
-                },
-              }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'LABORATORIO GERAL', date: '', location: '' },
-                },
-              ],
+        items: allVLs.length > 0
+          ? allVLs.map((item) => ({
+              value: `${item.value?.display ?? item.value ?? ''} ${item.comment ? item.comment : ''}`.trim() || 'Sem dados no SESP',
+              source: {
+                form: item.encounter?.form?.display === 'FORMULARIO ELECTRONICO DE LABORATORIO' ? 'e-LAB'
+                     : item.encounter?.form?.display || 'Sem dados no SESP',
+                date: formatDate(item.obsDatetime) || '',
+              },
+            }))
+          : [{ value: 'Sem dados no SESP', source: { form: 'LABORATORIO GERAL', date: '' } }],
       },
-
       {
         title: 'CD4 Absoluto',
+        permissionKey: 'CD4_ABS',
         isList: true,
         items:
-          allCD4AbsFSR.length > 0 || allCD4AbsFLG.length > 0
+          (allCD4AbsFLG.length || allCD4AbsFSR.length)
             ? [
                 ...allCD4AbsFLG.map((item) => ({
                   value: item?.value || 'Sem dados no SESP',
-                  source: {
-                    form:
-                      item.encounter?.form?.display ===
-                      'FORMULARIO ELECTRONICO DE LABORATORIO'
-                        ? 'e-LAB'
-                        : item.encounter?.form?.display || 'LABORATORIO GERAL',
-                    date: formatDate(item.obsDatetime) || '',
-                  },
+                  source: { form: item.encounter?.form?.display === 'FORMULARIO ELECTRONICO DE LABORATORIO' ? 'e-LAB' : (item.encounter?.form?.display || 'LABORATORIO GERAL'),
+                            date: formatDate(item.obsDatetime) || '' },
                 })),
                 ...allCD4AbsFSR.map((item) => ({
                   value: item.value || 'Sem dados no SESP',
-                  source: {
-                    form:
-                      item.encounter?.form?.display ===
-                      'FORMULARIO ELECTRONICO DE LABORATORIO'
-                        ? 'e-LAB'
-                        : item.encounter?.form?.display || 'E-LAB',
-                    date: formatDate(item.obsDatetime) || '',
-                  },
+                  source: { form: item.encounter?.form?.display === 'FORMULARIO ELECTRONICO DE LABORATORIO' ? 'e-LAB' : (item.encounter?.form?.display || 'E-LAB'),
+                            date: formatDate(item.obsDatetime) || '' },
                 })),
               ]
             : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'LABORATORIO GERAL', date: '', location: '' },
-                },
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'e-Lab', date: '', location: '' },
-                },
+                { value: 'Sem dados no SESP', source: { form: 'LABORATORIO GERAL', date: '' } },
+                { value: 'Sem dados no SESP', source: { form: 'e-Lab', date: '' } },
               ],
       },
       {
         title: 'CD4 Percentual',
+        permissionKey: 'CD4_PCT',
         isList: true,
         items:
-          allCD4CoverageFLG.length > 0 || allCD4CoverageFSR.length > 0
+          (allCD4CoverageFLG.length || allCD4CoverageFSR.length)
             ? [...allCD4CoverageFLG, ...allCD4CoverageFSR]
-                .filter((item) => item.obsDatetime) // Garante que só ordenamos itens com data
-                .map((item) => ({
-                  ...item,
-                  parsedDate: new Date(item.obsDatetime), // Converte a data para um objeto Date
-                }))
-                .sort((a, b) => b.parsedDate - a.parsedDate) // Ordena corretamente
+                .filter((i) => i?.obsDatetime)
+                .map((i) => ({ ...i, parsedDate: new Date(i.obsDatetime) }))
+                .sort((a, b) => b.parsedDate - a.parsedDate)
                 .map((item) => ({
                   value: item.value || 'Sem dados no SESP',
                   source: {
-                    form:
-                      item.encounter?.form?.display ===
-                      'FORMULARIO ELECTRONICO DE LABORATORIO'
-                        ? 'e-LAB'
-                        : item.encounter?.form?.display ||
-                          (allCD4CoverageFLG.includes(item)
-                            ? 'LABORATORIO GERAL'
-                            : 'e-LAB'),
+                    form: item.encounter?.form?.display === 'FORMULARIO ELECTRONICO DE LABORATORIO'
+                      ? 'e-LAB'
+                      : item.encounter?.form?.display || (allCD4CoverageFLG.includes(item) ? 'LABORATORIO GERAL' : 'e-LAB'),
                     date: formatDate(item.obsDatetime) || '',
                   },
                 }))
             : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'LABORATORIO GERAL', date: '', location: '' },
-                },
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'e-Lab', date: '', location: '' },
-                },
+                { value: 'Sem dados no SESP', source: { form: 'LABORATORIO GERAL', date: '' } },
+                { value: 'Sem dados no SESP', source: { form: 'e-Lab', date: '' } },
               ],
       },
       {
         title: 'GeneXpert',
+        permissionKey: 'TB_GENEXPERT',
         isList: true,
         items:
-          allGenexpert.length > 0 || allGenexpertFC.length > 0
+          (allGenexpert.length || allGenexpertFC.length)
             ? [
                 ...allGenexpert.map((item) => ({
                   value: item.value?.display || 'Sem dados no SESP',
-                  source: {
-                    form:
-                      item.encounter?.form?.display ===
-                      'FORMULARIO ELECTRONICO DE LABORATORIO'
-                        ? 'e-LAB'
-                        : item.encounter?.form?.display || 'LABORATORIO GERAL',
-                    date: formatDate(item.obsDatetime) || '',
-                  },
+                  source: { form: item.encounter?.form?.display === 'FORMULARIO ELECTRONICO DE LABORATORIO' ? 'e-LAB' : (item.encounter?.form?.display || 'LABORATORIO GERAL'),
+                            date: formatDate(item.obsDatetime) || '' },
                 })),
                 ...allGenexpertFC.map((item) => ({
                   value: item.value?.display || 'Sem dados no SESP',
-                  source: {
-                    form: item?.encounter?.form?.display || 'FICHA CLINICA',
-                    date: formatDate(item.obsDatetime) || '',
-                  },
+                  source: { form: item.encounter?.form?.display || 'FICHA CLINICA',
+                            date: formatDate(item.obsDatetime) || '' },
                 })),
               ]
             : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'LABORATORIO GERAL', date: '', location: '' },
-                },
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA CLINICA', date: '', location: '' },
-                },
+                { value: 'Sem dados no SESP', source: { form: 'LABORATORIO GERAL', date: '' } },
+                { value: 'Sem dados no SESP', source: { form: 'FICHA CLINICA', date: '' } },
               ],
       },
       {
         title: 'Baciloscopia',
+        permissionKey: 'TB_BACILOSCOPIA',
         isList: true,
         items:
-          allBaciloscopia.length > 0 || allBaciloscopiaFC.length > 0
+          (allBaciloscopia.length || allBaciloscopiaFC.length)
             ? [
                 ...allBaciloscopia.map((item) => ({
                   value: item.value?.display || 'Sem dados no SESP',
-                  source: {
-                    form:
-                      item.encounter?.form?.display ===
-                      'FORMULARIO ELECTRONICO DE LABORATORIO'
-                        ? 'e-LAB'
-                        : item.encounter?.form?.display || 'LABORATORIO GERAL',
-                    date: formatDate(item.obsDatetime) || '',
-                  },
+                  source: { form: item.encounter?.form?.display === 'FORMULARIO ELECTRONICO DE LABORATORIO' ? 'e-LAB' : (item.encounter?.form?.display || 'LABORATORIO GERAL'),
+                            date: formatDate(item.obsDatetime) || '' },
                 })),
                 ...allBaciloscopiaFC.map((item) => ({
                   value: item.value || 'Sem dados no SESP',
-                  source: {
-                    form: item?.encounter?.form?.display || 'FICHA CLINICA',
-                    date: formatDate(item.obsDatetime) || '',
-                  },
+                  source: { form: item.encounter?.form?.display || 'FICHA CLINICA',
+                            date: formatDate(item.obsDatetime) || '' },
                 })),
               ]
             : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'LABORATORIO GERAL', date: '', location: '' },
-                },
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA CLINICA', date: '', location: '' },
-                },
+                { value: 'Sem dados no SESP', source: { form: 'LABORATORIO GERAL', date: '' } },
+                { value: 'Sem dados no SESP', source: { form: 'FICHA CLINICA', date: '' } },
               ],
       },
       {
         title: 'TB LAM',
+        permissionKey: 'TB_LAM',
         isList: true,
         items:
-          rastreioTBLAMLabGeral.length > 0 ||
-          rastreioTBLAMELab.length > 0 ||
-          rastreioTBLAMFichaClinica.length > 0
+          (rastreioTBLAMLabGeral.length || rastreioTBLAMELab.length || rastreioTBLAMFichaClinica.length)
             ? [
                 ...rastreioTBLAMLabGeral.map((item) => ({
                   value: item.value?.display || 'Sem dados no SESP',
-                  comment:
-                    'Nível de Positividade: ' + item.value?.comment || '',
-                  source: {
-                    form:
-                      item.encounter?.form?.display ===
-                      'FORMULARIO ELECTRONICO DE LABORATORIO'
-                        ? 'e-LAB'
-                        : item.encounter?.form?.display || 'LABORATORIO GERAL',
-                    date: formatDate(item.obsDatetime) || '',
-                  },
+                  comment: item.value?.comment ? 'Nível de Positividade: ' + item.value.comment : '',
+                  source: { form: item.encounter?.form?.display === 'FORMULARIO ELECTRONICO DE LABORATORIO' ? 'e-LAB' : (item.encounter?.form?.display || 'LABORATORIO GERAL'),
+                            date: formatDate(item.obsDatetime) || '' },
                 })),
                 ...rastreioTBLAMELab.map((item) => ({
                   value: item.value?.display || 'Sem dados no SESP',
                   comment: item.value?.comment || '',
-                  source: {
-                    form:
-                      item.encounter?.form?.display ===
-                      'FORMULARIO ELECTRONICO DE LABORATORIO'
-                        ? 'e-LAB'
-                        : item.encounter?.form?.display || 'e-LAB',
-                    date: formatDate(item.obsDatetime) || '',
-                  },
+                  source: { form: item.encounter?.form?.display === 'FORMULARIO ELECTRONICO DE LABORATORIO' ? 'e-LAB' : (item.encounter?.form?.display || 'e-LAB'),
+                            date: formatDate(item.obsDatetime) || '' },
                 })),
                 ...rastreioTBLAMFichaClinica.map((item) => ({
                   value: item.value?.display || 'Sem dados no SESP',
                   comment: item.value?.comment || '',
-                  source: {
-                    form:
-                      item.encounter?.form?.display ===
-                      'FORMULARIO ELECTRONICO DE LABORATORIO'
-                        ? 'E-LAB'
-                        : item.encounter?.form?.display || 'FICHA CLINICA',
-                    date: formatDate(item.obsDatetime) || '',
-                  },
+                  source: { form: item.encounter?.form?.display || 'FICHA CLINICA',
+                            date: formatDate(item.obsDatetime) || '' },
                 })),
               ]
             : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'LABORATORIO GERAL', date: '', location: '' },
-                },
-                {
-                  value: 'Sem dados no SESP',
-                  source: {
-                    form: 'e-LAB',
-                    date: '',
-                    location: '',
-                  },
-                },
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA CLINICA', date: '', location: '' },
-                },
+                { value: 'Sem dados no SESP', source: { form: 'LABORATORIO GERAL', date: '' } },
+                { value: 'Sem dados no SESP', source: { form: 'e-LAB', date: '' } },
+                { value: 'Sem dados no SESP', source: { form: 'FICHA CLINICA', date: '' } },
               ],
       },
-      {
-        title: 'Hemoglobina (HGB ou HB)',
-        isList: true,
-        items:
-          allHGB.length > 0
-            ? allHGB.map((item) => ({
-                value: item.value || 'Sem dados no SESP',
-                source: {
-                  form:
-                    item.encounter?.form?.display ===
-                    'FORMULARIO ELECTRONICO DE LABORATORIO'
-                      ? 'E-LAB'
-                      : item.encounter?.form?.display || 'LABORATORIO GERAL',
-                  date: formatDate(item.obsDatetime) || 'Sem data',
-                },
-              }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'LABORATORIO GERAL', date: '', location: '' },
-                },
-              ],
-      },
-      {
-        title: 'Aspartato Aminotransferase',
-        isList: true,
-        items:
-          allAST.length > 0
-            ? allAST.map((item) => ({
-                value: item.value || 'Sem dados no SESP',
-                source: {
-                  form:
-                    item.encounter?.form?.display ===
-                    'FORMULARIO ELECTRONICO DE LABORATORIO'
-                      ? 'E-LAB'
-                      : item.encounter?.form?.display || 'LABORATORIO GERAL',
-                  date: formatDate(item.obsDatetime) || 'Sem data',
-                },
-              }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'LABORATORIO GERAL', date: '', location: '' },
-                },
-              ],
-      },
-      {
-        title: 'Alanina Aminotransferase',
-        isList: true,
-        items:
-          allALT.length > 0
-            ? allALT.map((item) => ({
-                value: item.value || 'Sem dados no SESP',
-                source: {
-                  form:
-                    item.encounter?.form?.display ===
-                    'FORMULARIO ELECTRONICO DE LABORATORIO'
-                      ? 'E-LAB'
-                      : item.encounter?.form?.display || 'LABORATORIO GERAL',
-                  date: formatDate(item.obsDatetime) || 'Sem data',
-                },
-              }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'LABORATORIO GERAL', date: '', location: '' },
-                },
-              ],
-      },
-      {
-        title: 'Amilase (AMI)',
-        isList: true,
-        items:
-          allAMI.length > 0
-            ? allAMI.map((item) => ({
-                value: item.value || 'Sem dados no SESP',
-                source: {
-                  form:
-                    item.encounter?.form?.display ===
-                    'FORMULARIO ELECTRONICO DE LABORATORIO'
-                      ? 'E-LAB'
-                      : item.encounter?.form?.display || 'LABORATORIO GERAL',
-                  date: formatDate(item.obsDatetime) || 'Sem data',
-                },
-              }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'LABORATORIO GERAL', date: '', location: '' },
-                },
-              ],
-      },
-      {
-        title: 'Glucose (GLC)',
-        isList: true,
-        items:
-          allGLC.length > 0
-            ? allGLC.map((item) => ({
-                value: item.value || 'Sem dados no SESP',
-                source: {
-                  form:
-                    item.encounter?.form?.display ===
-                    'FORMULARIO ELECTRONICO DE LABORATORIO'
-                      ? 'E-LAB'
-                      : item.encounter?.form?.display || 'LABORATORIO GERAL',
-                  date: formatDate(item.obsDatetime) || 'Sem data',
-                },
-              }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'LABORATORIO GERAL', date: '', location: '' },
-                },
-              ],
-      },
-      {
-        title: 'PCR',
-        isList: true,
-        items:
-          allPCR.length > 0
-            ? allPCR.map((item) => ({
-                value: item.value?.display || 'Sem dados no SESP',
-                source: {
-                  form:
-                    item.encounter?.form?.display ===
-                    'FORMULARIO ELECTRONICO DE LABORATORIO'
-                      ? 'E-LAB'
-                      : item.encounter?.form?.display || 'LABORATORIO GERAL',
-                  date: formatDate(item.obsDatetime) || 'Sem data',
-                },
-              }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'LABORATORIO GERAL', date: '', location: '' },
-                },
-              ],
-      },
+      { title: 'Hemoglobina (HGB ou HB)',        permissionKey: 'LAB_HGB', isList: true, items: allHGB.length ? allHGB.map((it)=>({ value: it.value||'Sem dados no SESP', source:{ form: it.encounter?.form?.display==='FORMULARIO ELECTRONICO DE LABORATORIO'?'E-LAB':(it.encounter?.form?.display||'LABORATORIO GERAL'), date: formatDate(it.obsDatetime)||'Sem data' } })) : [{ value:'Sem dados no SESP', source:{ form:'LABORATORIO GERAL', date:'' } }] },
+      { title: 'Aspartato Aminotransferase',     permissionKey: 'LAB_AST', isList: true, items: allAST.length ? allAST.map((it)=>({ value: it.value||'Sem dados no SESP', source:{ form: it.encounter?.form?.display==='FORMULARIO ELECTRONICO DE LABORATORIO'?'E-LAB':(it.encounter?.form?.display||'LABORATORIO GERAL'), date: formatDate(it.obsDatetime)||'Sem data' } })) : [{ value:'Sem dados no SESP', source:{ form:'LABORATORIO GERAL', date:'' } }] },
+      { title: 'Alanina Aminotransferase',       permissionKey: 'LAB_ALT', isList: true, items: allALT.length ? allALT.map((it)=>({ value: it.value||'Sem dados no SESP', source:{ form: it.encounter?.form?.display==='FORMULARIO ELECTRONICO DE LABORATORIO'?'E-LAB':(it.encounter?.form?.display||'LABORATORIO GERAL'), date: formatDate(it.obsDatetime)||'Sem data' } })) : [{ value:'Sem dados no SESP', source:{ form:'LABORATORIO GERAL', date:'' } }] },
+      { title: 'Amilase (AMI)',                  permissionKey: 'LAB_AMI', isList: true, items: allAMI.length ? allAMI.map((it)=>({ value: it.value||'Sem dados no SESP', source:{ form: it.encounter?.form?.display==='FORMULARIO ELECTRONICO DE LABORATORIO'?'E-LAB':(it.encounter?.form?.display||'LABORATORIO GERAL'), date: formatDate(it.obsDatetime)||'Sem data' } })) : [{ value:'Sem dados no SESP', source:{ form:'LABORATORIO GERAL', date:'' } }] },
+      { title: 'Glucose (GLC)',                  permissionKey: 'LAB_GLC', isList: true, items: allGLC.length ? allGLC.map((it)=>({ value: it.value||'Sem dados no SESP', source:{ form: it.encounter?.form?.display==='FORMULARIO ELECTRONICO DE LABORATORIO'?'E-LAB':(it.encounter?.form?.display||'LABORATORIO GERAL'), date: formatDate(it.obsDatetime)||'Sem data' } })) : [{ value:'Sem dados no SESP', source:{ form:'LABORATORIO GERAL', date:'' } }] },
+      { title: 'PCR',                            permissionKey: 'LAB_PCR', isList: true, items: allPCR.length ? allPCR.map((it)=>({ value: it.value?.display||'Sem dados no SESP', source:{ form: it.encounter?.form?.display==='FORMULARIO ELECTRONICO DE LABORATORIO'?'E-LAB':(it.encounter?.form?.display||'LABORATORIO GERAL'), date: formatDate(it.obsDatetime)||'Sem data' } })) : [{ value:'Sem dados no SESP', source:{ form:'LABORATORIO GERAL', date:'' } }] },
     ];
+
+    // ⬅️ aplica o filtro por permissões ANTES de enviar para o BodyComponent
+    resultadosData.value = filterByAccess(sections);
+
   } catch (error) {
-    console.error('Error fetching Levantamento ARV data:', error);
+    console.error('Error fetching Resultados Laboratoriais:', error);
   } finally {
-    loading.value = false; // Stop loading spinner
+    loading.value = false;
   }
 });
 </script>

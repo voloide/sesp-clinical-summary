@@ -18,95 +18,94 @@ import headerComponent from './headerComponent.vue';
 import rastreioCACUMService from 'src/services/patient/rastreioCACUM';
 import BodyComponent from './bodyComponent.vue';
 
-// Inject patient data
+// ⬇️ NOVO: controlo de acesso por variável
+import { useAccessControl } from 'src/access/useAccessControl';
+const { loadFromSnapshot, filterByAccess } = useAccessControl();
+
 const patient = inject('selectedPatient');
-const loading = ref(true); // Loading state
-
+const loading = ref(true);
 const rastreioData = ref([]);
-
-// Track collapsed states for each section
 const collapsedSections = ref([]);
 
-// Toggle collapse state for a section
 function toggleSection(index) {
   collapsedSections.value[index] = !collapsedSections.value[index];
 }
-// Helper function to format date to dd-MM-yyyy
 function formatDate(dateString) {
   if (!dateString) return null;
-  const date = new Date(dateString);
-  return date.toLocaleDateString('pt-PT', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  const d = new Date(dateString);
+  return d.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-// Fetch Dados CACUM data
 onMounted(async () => {
-  if (!patient.value) {
+  if (!patient?.value) {
     console.error('Patient data is missing.');
-    loading.value = false; // Stop loading if there's no patient
+    loading.value = false;
     return;
+  }
+
+  // ⬇️ carregar permissões a partir dos roles da sessão
+  try {
+    const roles = JSON.parse(sessionStorage.getItem('roles') || '[]');
+    loadFromSnapshot(roles.map((r) => r.uuid));
+  } catch {
+    loadFromSnapshot([]);
   }
 
   try {
     const patientId = patient.value.uuid;
-
     const [rastreioCacumData, hPVDNAResultData] = await Promise.all([
       rastreioCACUMService.getRastreioCacumDAta(patientId),
       rastreioCACUMService.getHPVDNAResultData(patientId),
     ]);
 
-    // Populate rastreioData
-    rastreioData.value = [
+    // Secções com permissionKey por variável (Annex)
+    const sections = [
       {
         title: 'VIA: Resultado e Data do último rastreio',
+        permissionKey: 'VIA',
         isList: true,
         items:
-          rastreioCacumData.length > 0
+          rastreioCacumData?.length
             ? rastreioCacumData.map((item) => ({
-                value: item.value.display || 'Sem dados no SESP',
+                value: item?.value?.display || 'Sem dados no SESP',
                 source: {
-                  form: item.encounter?.form?.display || 'CCU: RASTREIO',
-                  date: formatDate(item.obsDatetime) || 'Sem data',
+                  form: item?.encounter?.form?.display || 'CCU: RASTREIO',
+                  date: formatDate(item?.obsDatetime) || 'Sem data',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'CCU: RASTREIO', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'CCU: RASTREIO', date: '' } }],
       },
       {
         title: 'Resultado de HPV-DNA',
+        permissionKey: 'HPV_DNA',
         isList: true,
         items:
-          hPVDNAResultData.length > 0
+          hPVDNAResultData?.length
             ? hPVDNAResultData.map((item) => ({
-                value: item.value.display || 'Sem dados no SESP',
+                value: item?.value?.display || 'Sem dados no SESP',
                 source: {
-                  form: item.encounter?.form?.display || 'CCU: RASTREIO',
-                  date:
-                    formatDate(item.encounter.encounterDatetime) || 'Sem data',
+                  form: item?.encounter?.form?.display || 'CCU: RASTREIO',
+                  date: formatDate(item?.encounter?.encounterDatetime) || 'Sem data',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'CCU: RASTREIO', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'CCU: RASTREIO', date: '' } }],
       },
     ];
+
+    // Aplicar filtro por permissões
+    const filtered = filterByAccess(sections);
+    rastreioData.value = filtered.length ? filtered : [
+      { title: 'Rastreio CACUM', isList: false, value: 'Sem permissões para visualizar estes dados', source: { form: '', date: '' } }
+    ];
+
   } catch (error) {
     console.error('Error fetching Dados CACUM data:', error);
   } finally {
-    loading.value = false; // Stop loading after fetching data
+    loading.value = false;
   }
 });
 </script>
+
 
 <style scoped>
 .q-card {

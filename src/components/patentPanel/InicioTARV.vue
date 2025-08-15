@@ -18,38 +18,38 @@ import headerComponent from './headerComponent.vue';
 import inicioTarvService from 'src/services/patient/inicioTARVService';
 import BodyComponent from './bodyComponent.vue';
 
-// Inject patient data
+// ⬇️ NOVO: controlo de acesso por variável
+import { useAccessControl } from 'src/access/useAccessControl';
+const { loadFromSnapshot, filterByAccess } = useAccessControl();
+
 const patient = inject('selectedPatient');
-const loading = ref(true); // Loading state
-
-// Reactive data for Dados Início TARV
+const loading = ref(true);
 const inicioTARVData = ref([]);
-
-// Track collapsed states for each section
 const collapsedSections = ref([]);
 
-// Toggle collapse state for a section
 function toggleSection(index) {
   collapsedSections.value[index] = !collapsedSections.value[index];
 }
 
-// Helper function to format date to dd-MM-yyyy
 function formatDate(dateString) {
   if (!dateString) return null;
   const date = new Date(dateString);
-  return date.toLocaleDateString('pt-PT', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  return date.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-// Fetch Dados Início TARV data
 onMounted(async () => {
-  if (!patient.value) {
+  if (!patient?.value) {
     console.error('Patient data is missing.');
-    loading.value = false; // Stop loading if there's no patient
+    loading.value = false;
     return;
+  }
+
+  // ⬇️ NOVO: carregar permissões a partir dos roles guardados na sessão
+  try {
+    const roles = JSON.parse(sessionStorage.getItem('roles') || '[]');
+    loadFromSnapshot(roles.map((r) => r.uuid));
+  } catch {
+    loadFromSnapshot([]);
   }
 
   try {
@@ -67,43 +67,32 @@ onMounted(async () => {
       inicioTarvService.getWHOStagingAtARTStart(patientId),
     ]);
 
-    console.log(
-      'ARTStartDate=========>',
-      JSON.stringify(ARTStartDate),
-      null,
-      2
-    );
-
-    // Populate inicioTARVData
-    inicioTARVData.value = [
+    // ⬇️ NOVO: sections com permissionKey por variável (Annex)
+    const sections = [
       {
         title: 'Data de Início TARV',
+        permissionKey: 'ART_START',
         isList: true,
         items:
-          ARTStartDate.length > 0
+          ARTStartDate?.length
             ? ARTStartDate.map((item) => ({
                 value: formatDate(item.value) || 'Sem dados no SESP',
                 source: {
-                  form:
-                    item.encounter?.form?.display === 'ADULTO: SEGUIMENTO'
-                      ? 'FICHA DE SEGUIMENTO'
-                      : item.encounter?.form?.display || 'Sem formulário',
+                  form: item.encounter?.form?.display === 'ADULTO: SEGUIMENTO'
+                    ? 'FICHA DE SEGUIMENTO'
+                    : (item.encounter?.form?.display || 'Sem formulário'),
                   date: formatDate(item.obsDatetime) || 'Sem data',
                   location: item.encounter?.location?.name || 'Sem localidade',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA RESUMO', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA RESUMO', date: '', location: '' } }],
       },
       {
         title: 'Unidade Sanitária de Início TARV',
+        permissionKey: 'ART_START_HF',
         isList: true,
         items:
-          HfARTStart.length > 0
+          HfARTStart?.length
             ? HfARTStart.map((item) => ({
                 value: item.value || 'Sem dados no SESP',
                 source: {
@@ -112,61 +101,66 @@ onMounted(async () => {
                   location: item.encounter?.location?.name || 'Sem localidade',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA RESUMO', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA RESUMO', date: '', location: '' } }],
       },
       {
         title: 'Estado de Gravidez no Início TARV',
+        permissionKey: 'ART_START_PREG',
         isList: true,
         items:
-          PregnancyAtARTStart.length > 0
+          PregnancyAtARTStart?.length
             ? PregnancyAtARTStart.map((item) => ({
-                value: item.value.display || 'Sem dados no SESP',
+                value: item.value?.display || 'Sem dados no SESP',
                 source: {
-                  form: item.source || 'Sem formulário',
+                  form: item.source || item.encounter?.form?.display || 'Sem formulário',
                   date: formatDate(item.obsDatetime) || 'Sem data',
                   location: item.encounter?.location?.name || 'Sem localidade',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA RESUMO', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA RESUMO', date: '', location: '' } }],
       },
       {
         title: 'Estado de OMS no Início TARV',
+        permissionKey: 'ART_START_WHO',
         isList: true,
         items:
-          WHOStagingAtARTStart.length > 0
+          WHOStagingAtARTStart?.length
             ? WHOStagingAtARTStart.map((item) => ({
-                value: item.value.display || 'Sem dados no SESP',
+                value: item.value?.display || 'Sem dados no SESP',
                 source: {
-                  form: item.source || 'Sem formulário',
+                  form: item.source || item.encounter?.form?.display || 'Sem formulário',
                   date: formatDate(item.obsDatetime) || 'Sem data',
                   location: item.encounter?.location?.name || 'Sem localidade',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA RESUMO', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA RESUMO', date: '', location: '' } }],
       },
     ];
+
+    // ⬇️ NOVO: aplicar filtro por permissões do utilizador
+    const filtered = filterByAccess(sections);
+
+    // Se preferir esconder tudo quando não há nenhuma permissão:
+    // inicioTARVData.value = filtered;
+
+    // Ou mostrar um cartão com mensagem:
+    inicioTARVData.value = filtered.length ? filtered : [
+      {
+        title: 'Dados do Início TARV',
+        isList: false,
+        value: 'Sem permissões para visualizar estes dados',
+        source: { form: '', date: '' },
+      }
+    ];
+
   } catch (error) {
     console.error('Error fetching Dados Início TARV data:', error);
   } finally {
-    loading.value = false; // Stop loading after fetching data
+    loading.value = false;
   }
 });
 </script>
+
 
 <style scoped>
 .q-card {

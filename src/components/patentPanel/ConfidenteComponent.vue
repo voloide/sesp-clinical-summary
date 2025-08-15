@@ -18,102 +18,96 @@ import headerComponent from './headerComponent.vue';
 import confidenteService from 'src/services/patient/confidente';
 import BodyComponent from './bodyComponent.vue';
 
-// Inject patient data
+// ⬇️ NOVO: controlo de acesso por variável
+import { useAccessControl } from 'src/access/useAccessControl';
+const { loadFromSnapshot, filterByAccess } = useAccessControl();
+
 const patient = inject('selectedPatient');
-const loading = ref(true); // Loading state
-
+const loading = ref(true);
 const rastreioData = ref([]);
-
-// Track collapsed states for each section
 const collapsedSections = ref([]);
 
-// Toggle collapse state for a section
 function toggleSection(index) {
   collapsedSections.value[index] = !collapsedSections.value[index];
 }
-// Helper function to format date to dd-MM-yyyy
 function formatDate(dateString) {
   if (!dateString) return null;
   const date = new Date(dateString);
   return date.toLocaleDateString('pt-PT', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
+    day: '2-digit', month: '2-digit', year: 'numeric',
   });
 }
 
-// Fetch Dados Confidente data
 onMounted(async () => {
-  if (!patient.value) {
+  if (!patient?.value) {
     console.error('Patient data is missing.');
-    loading.value = false; // Stop loading if there's no patient
+    loading.value = false;
     return;
+  }
+
+  // ⬇️ carregar permissões a partir dos roles guardados na sessão
+  try {
+    const roles = JSON.parse(sessionStorage.getItem('roles') || '[]');
+    loadFromSnapshot(roles.map((r) => r.uuid));
+  } catch {
+    loadFromSnapshot([]);
   }
 
   try {
     const patientId = patient.value.uuid;
-
     const [confidenteName, confidantContact] = await Promise.all([
       confidenteService.getConfidenteName(patientId),
       confidenteService.getConfidantContact(patientId),
     ]);
 
-    // Populate rastreioData
-    rastreioData.value = [
+    // Secções com permissionKey por variável (Annex)
+    const sections = [
       {
         title: 'Nome do Confidente',
+        permissionKey: 'CONF_NAME',
         isList: true,
         items:
-          confidenteName.length > 0
+          confidenteName?.length
             ? confidenteName.map((item) => ({
-                value: item.value || 'Sem dados no SESP',
+                value: item?.value || 'Sem dados no SESP',
                 source: {
-                  form:
-                    item.encounter?.form?.display ===
-                    'FORMULARIO ELECTRONICO DE LABORATORIO'
-                      ? 'e-LAB'
-                      : item.encounter?.form?.display || 'FICHA RESUMO',
-                  date: formatDate(item.obsDatetime) || 'Sem data',
+                  form: item?.encounter?.form?.display || 'FICHA RESUMO',
+                  date: formatDate(item?.obsDatetime) || 'Sem data',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA RESUMO', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA RESUMO', date: '' } }],
       },
       {
         title: 'Contacto do Confidente',
+        permissionKey: 'CONF_PHONE',
         isList: true,
         items:
-          confidantContact.length > 0
+          confidantContact?.length
             ? confidantContact.map((item) => ({
-                value: item.value || 'Sem dados no SESP',
+                value: item?.value || 'Sem dados no SESP',
                 source: {
-                  form:
-                    item.encounter?.form?.display ===
-                    'FORMULARIO ELECTRONICO DE LABORATORIO'
-                      ? 'e-LAB'
-                      : item.encounter?.form?.display || 'FICHA RESUMO',
-                  date: formatDate(item.obsDatetime) || 'Sem data',
+                  form: item?.encounter?.form?.display || 'FICHA RESUMO',
+                  date: formatDate(item?.obsDatetime) || 'Sem data',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA RESUMO', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA RESUMO', date: '' } }],
       },
     ];
+
+    // Aplicar filtro por permissões
+    const filtered = filterByAccess(sections);
+    rastreioData.value = filtered.length ? filtered : [
+      { title: 'Confidente', isList: false, value: 'Sem permissões para visualizar estes dados', source: { form: '', date: '' } }
+    ];
+
   } catch (error) {
     console.error('Error fetching Dados Confidente:', error);
   } finally {
-    loading.value = false; // Stop loading after fetching data
+    loading.value = false;
   }
 });
 </script>
+
 
 <style scoped>
 .q-card {

@@ -16,6 +16,8 @@ import { inject, ref, onMounted } from 'vue';
 import headerComponent from './headerComponent.vue';
 import levantamentoARVService from 'src/services/patient/levantamentoARVService';
 import BodyComponent from './bodyComponent.vue';
+import { useAccessControl } from 'src/access/useAccessControl';
+const { loadFromSnapshot, filterByAccess } = useAccessControl();
 
 // Inject patient data
 const patient = inject('selectedPatient');
@@ -51,6 +53,13 @@ onMounted(async () => {
   }
 
   try {
+    const roles = JSON.parse(sessionStorage.getItem('roles') || '[]');
+    loadFromSnapshot(roles.map((r) => r.uuid));
+  } catch {
+    loadFromSnapshot([]);
+  }
+
+  try {
     const patientId = patient.value.uuid;
 
     const [
@@ -67,141 +76,108 @@ onMounted(async () => {
       levantamentoARVService.getSwitchThirdRow(patientId),
     ]);
 
-    // Populate levantamentoData
-    levantamentoData.value = [
+    // Construir secções com permissionKey por variável
+    const sections = [
       {
         title: 'Data do último levantamento de ARV',
-        value: pickupRegime[0]?.obsDatetime
-          ? formatDate(pickupRegime[0]?.obsDatetime)
-          : 'Sem dados no SESP',
+        permissionKey: 'ARV_LAST_PICKUP',
+        isList: false,
+        value: pickupRegime[0]?.obsDatetime ? formatDate(pickupRegime[0]?.obsDatetime) : 'Sem dados no SESP',
         source: pickupRegime[0]
           ? {
-              form:
-                pickupRegime[0]?.encounter?.form?.display ===
-                'FORMULARIO ELECTRONICO DE LABORATORIO'
-                  ? 'E-LAB'
-                  : nextPickupDate[0]?.encounter?.form?.display ||
-                    'Sem formulário',
+              form: pickupRegime[0]?.encounter?.form?.display || 'Sem formulário',
               date: formatDate(pickupRegime[0]?.obsDatetime) || 'Sem data',
-              location:
-                pickupRegime[0]?.encounter['location.name'] || 'Sem localidade',
+              location: pickupRegime[0]?.encounter?.['location.name'] || 'Sem localidade',
             }
           : { form: 'FILA', date: '', location: '' },
       },
       {
         title: 'Regime TARV no último levantamento',
+        permissionKey: 'ARV_LAST_REGIMEN',
+        isList: false,
         value: pickupRegime[0]?.value?.display || 'Sem dados no SESP',
         source: pickupRegime[0]
           ? {
-              form:
-                pickupRegime[0]?.encounter?.form?.display ===
-                'FORMULARIO ELECTRONICO DE LABORATORIO'
-                  ? 'E-LAB'
-                  : pickupRegime[0]?.encounter?.form?.display ||
-                    'Sem formulário',
+              form: pickupRegime[0]?.encounter?.form?.display || 'Sem formulário',
               date: formatDate(pickupRegime[0]?.obsDatetime) || 'Sem data',
-              location:
-                pickupRegime[0]?.encounter['location.name'] || 'Sem localidade',
+              location: pickupRegime[0]?.encounter?.['location.name'] || 'Sem localidade',
             }
           : { form: 'FILA', date: '', location: '' },
       },
       {
         title: 'Data mais recente do próximo levantamento',
-        value: nextPickupDate[0]?.value
-          ? formatDate(nextPickupDate[0]?.value)
-          : 'Sem dados no SESP',
+        permissionKey: 'ARV_NEXT_PICKUP',
+        isList: false,
+        value: nextPickupDate[0]?.value ? formatDate(nextPickupDate[0]?.value) : 'Sem dados no SESP',
         source: nextPickupDate[0]
           ? {
-              form:
-                nextPickupDate[0]?.encounter?.form?.display ===
-                'FORMULARIO ELECTRONICO DE LABORATORIO'
-                  ? 'E-LAB'
-                  : nextPickupDate[0]?.encounter?.form?.display ||
-                    'Sem formulário',
+              form: nextPickupDate[0]?.encounter?.form?.display || 'Sem formulário',
               date: formatDate(nextPickupDate[0]?.obsDatetime) || 'Sem data',
-              location:
-                nextPickupDate[0]?.encounter['location.name'] ||
-                'Sem localidade',
+              location: nextPickupDate[0]?.encounter?.['location.name'] || 'Sem localidade',
             }
           : { form: 'FILA', date: '', location: '' },
       },
       {
         title: 'Alternativo a Primeira Linha',
+        permissionKey: 'LINE_1_ALT',
         isList: true,
         items:
           alternativeFirstRow.length > 0
             ? alternativeFirstRow.map((item) => ({
                 value: item.value?.display || 'Sem dados no SESP',
                 source: {
-                  form:
-                    item.encounter?.form?.display ===
-                    'FORMULARIO ELECTRONICO DE LABORATORIO'
-                      ? 'E-LAB'
-                      : item.encounter?.form?.display || 'Sem formulário',
+                  form: item.encounter?.form?.display || 'Sem formulário',
                   date: formatDate(item.obsDatetime) || 'Sem data',
-                  location: item.encounter['location.name'] || 'Sem localidade',
+                  location: item.encounter?.['location.name'] || 'Sem localidade',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA RESUMO', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA RESUMO', date: '', location: '' } }],
       },
       {
         title: 'Mudança para Segunda Linha',
+        permissionKey: 'LINE_2_CHANGE',
         isList: true,
         items:
           switchSecondRow.length > 0
             ? switchSecondRow.map((item) => ({
-                value: item.value.display || 'Sem dados no SESP',
+                value: item.value?.display || 'Sem dados no SESP',
                 source: {
-                  form:
-                    item.encounter?.form?.display ===
-                    'FORMULARIO ELECTRONICO DE LABORATORIO'
-                      ? 'E-LAB'
-                      : item.encounter?.form?.display || 'Sem formulário',
+                  form: item.encounter?.form?.display || 'Sem formulário',
                   date: formatDate(item.obsDatetime) || 'Sem data',
-                  location: item.encounter['location.name'] || 'Sem localidade',
+                  location: item.encounter?.['location.name'] || 'Sem localidade',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA RESUMO', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA RESUMO', date: '', location: '' } }],
       },
       {
         title: 'Mudança para Terceira Linha',
+        permissionKey: 'LINE_3_CHANGE',
         isList: true,
         items:
           switchThirdRow.length > 0
             ? switchThirdRow.map((item) => ({
-                value: item.value.display || 'Sem dados no SESP',
+                value: item.value?.display || 'Sem dados no SESP',
                 source: {
-                  form:
-                    item.encounter?.form?.display ===
-                    'FORMULARIO ELECTRONICO DE LABORATORIO'
-                      ? 'E-LAB'
-                      : item.encounter?.form?.display || 'Sem formulário',
+                  form: item.encounter?.form?.display || 'Sem formulário',
                   date: formatDate(item.obsDatetime) || 'Sem data',
-                  location: item.encounter['location.name'] || 'Sem localidade',
+                  location: item.encounter?.['location.name'] || 'Sem localidade',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA RESUMO', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA RESUMO', date: '', location: '' } }],
       },
     ];
+
+    // ⬇️ novo: aplicar filtro por permissões do utilizador
+    const filtered = filterByAccess(sections);
+    // Se quiseres ocultar o cartão inteiro quando o utilizador não tem acesso a nada:
+    levantamentoData.value = filtered.length ? filtered : [
+      { title: 'Levantamento de ARV', isList: false, value: 'Sem permissões para visualizar estes dados', source: { form: '', date: '' } }
+    ];
+
   } catch (error) {
     console.error('Error fetching Levantamento ARV data:', error);
   } finally {
-    loading.value = false; // Stop loading spinner
+    loading.value = false;
   }
 });
 </script>

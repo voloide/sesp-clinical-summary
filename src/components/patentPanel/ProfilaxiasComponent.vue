@@ -198,221 +198,158 @@ import { inject, ref, onMounted } from 'vue';
 import headerComponent from './headerComponent.vue';
 import profilaxiasService from 'src/services/patient/profilaxiasService';
 
-// Inject patient data
+// ⬇️ NOVO: controlo de acesso por variável
+import { useAccessControl } from 'src/access/useAccessControl';
+const { loadFromSnapshot, filterByAccess } = useAccessControl();
+
 const patient = inject('selectedPatient');
 
-// Reactive data for Resultados Laboratoriais
 const profilaxiaData = ref([]);
 const resultadosData = ref([]);
-const loading = ref(true); // Loading state
-const collapsedSections = ref([]); // Track collapsed states for each section
+const loading = ref(true);
+const collapsedSections = ref([]);
 
-// Helper function to format date to dd-MM-yyyy
 function formatDate(dateString) {
   if (!dateString) return null;
   const date = new Date(dateString);
-  return date.toLocaleDateString('pt-PT', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  return date.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
-
-// Toggle collapse state for a section
-function toggleSection(index) {
-  collapsedSections.value[index] = !collapsedSections.value[index];
-}
+function toggleSection(index) { collapsedSections.value[index] = !collapsedSections.value[index]; }
 
 onMounted(async () => {
-  if (!patient.value) {
+  if (!patient?.value) {
     console.error('Patient data is missing.');
     loading.value = false;
     return;
   }
 
+  // ⬇️ NOVO: carregar permissões a partir dos roles guardados na sessão
   try {
-    const allIPTStart = await profilaxiasService.allIPTStart(
-      patient.value.uuid
-    );
-    const allIPTEnd = await profilaxiasService.allIPTEnd(patient.value.uuid);
-    const CTZStartFichaClinica = await profilaxiasService.CTZStartFichaClinica(
-      patient.value.uuid
-    );
-    const IPTEndFichaFILT = await profilaxiasService.IPTEndFichaFILT(
-      patient.value.uuid
-    );
+    const roles = JSON.parse(sessionStorage.getItem('roles') || '[]');
+    loadFromSnapshot(roles.map((r) => r.uuid));
+  } catch {
+    loadFromSnapshot([]);
+  }
 
-    const CTZEndFichaClinica = await profilaxiasService.CTZEndFichaClinica(
-      patient.value.uuid
-    );
+  try {
+    const allIPTStart = await profilaxiasService.allIPTStart(patient.value.uuid);
+    const allIPTEnd   = await profilaxiasService.allIPTEnd(patient.value.uuid);
+    const CTZStartFichaClinica = await profilaxiasService.CTZStartFichaClinica(patient.value.uuid);
+    const IPTEndFichaFILT      = await profilaxiasService.IPTEndFichaFILT(patient.value.uuid);
+    const CTZEndFichaClinica   = await profilaxiasService.CTZEndFichaClinica(patient.value.uuid);
 
-    const expectedForms = [
-      'FICHA RESUMO',
-      'FICHA CLINICA',
-      'FICHA DE SEGUIMENTO',
-    ];
+    const expectedForms = ['FICHA RESUMO','FICHA CLINICA','FICHA DE SEGUIMENTO'];
 
-    // Map data for `allIPTStart`
     const startItems = allIPTStart
       .map((item) => ({
-        value: item.value.display ? formatDate(item.obsDatetime) : item.value,
+        value: item.value?.display ? formatDate(item.obsDatetime) : item.value,
         source: {
           profilaxia: item.profilaxia || 'Sem dados no SESP',
-          form:
-            item?.encounter?.form?.display === 'ADULTO: SEGUIMENTO'
-              ? 'FICHA DE SEGUIMENTO'
-              : item?.encounter?.form?.display || 'Sem dados no SESP',
+          form: item?.encounter?.form?.display === 'ADULTO: SEGUIMENTO' ? 'FICHA DE SEGUIMENTO' : (item?.encounter?.form?.display || 'Sem dados no SESP'),
         },
       }))
       .sort((a, b) => (a.source.form || '').localeCompare(b.source.form || ''));
+    const missingStartItems = expectedForms
+      .filter((form) => !startItems.some((i) => i.source.form === form))
+      .map((form) => ({ value: '_', source: { profilaxia: 'Sem dados no SESP', form } }));
 
-    const missingStartForms = expectedForms.filter(
-      (form) => !startItems.some((item) => item.source.form === form)
-    );
-
-    const missingStartItems = missingStartForms.map((form) => ({
-      value: '_',
-      source: {
-        profilaxia: 'Sem dados no SESP',
-        form,
-      },
-    }));
-
-    // Map data for `allIPTEnd`
     const endItems = allIPTEnd
       .map((item) => ({
-        value: item.value.display ? formatDate(item.obsDatetime) : item.value,
+        value: item.value?.display ? formatDate(item.obsDatetime) : item.value,
         source: {
           profilaxia: item.profilaxia || 'Sem dados no SESP',
-          form:
-            item?.encounter?.form?.display === 'ADULTO: SEGUIMENTO'
-              ? 'FICHA DE SEGUIMENTO'
-              : item?.encounter?.form?.display || 'Sem dados no SESP',
+          form: item?.encounter?.form?.display === 'ADULTO: SEGUIMENTO' ? 'FICHA DE SEGUIMENTO' : (item?.encounter?.form?.display || 'Sem dados no SESP'),
         },
       }))
       .sort((a, b) => (a.source.form || '').localeCompare(b.source.form || ''));
+    const missingEndItems = expectedForms
+      .filter((form) => !endItems.some((i) => i.source.form === form))
+      .map((form) => ({ value: '_', source: { profilaxia: 'Sem dados no SESP', form } }));
 
-    const missingEndForms = expectedForms.filter(
-      (form) => !endItems.some((item) => item.source.form === form)
-    );
-
-    const missingEndItems = missingEndForms.map((form) => ({
-      value: '_',
-      source: {
-        profilaxia: 'Sem dados no SESP',
-        form,
-      },
-    }));
-
-    profilaxiaData.value = [
+    // ⬇️ NOVO: adicionar permissionKey por variável (Annex) e filtrar
+    const profilaxiaSections = [
       {
         title: 'Data de início de TPT',
+        permissionKey: 'TPT_START',
         isList: true,
         items: [...startItems, ...missingStartItems],
       },
       {
         title: 'Data de fim de TPT',
+        permissionKey: 'TPT_END',
         isList: true,
         items: [...endItems, ...missingEndItems],
       },
     ];
+    profilaxiaData.value = filterByAccess(profilaxiaSections);
 
-    // Populate resultadosData
-    resultadosData.value = [
+    const resultadosSections = [
       {
         title: 'Data do último levantamento TPT',
-        value: IPTEndFichaFILT[0]?.obsDatetime
-          ? formatDate(IPTEndFichaFILT[0]?.obsDatetime)
-          : 'Sem dados no SESP',
+        permissionKey: 'TPT_LAST_PICKUP',
+        isList: false,
+        value: IPTEndFichaFILT[0]?.obsDatetime ? formatDate(IPTEndFichaFILT[0]?.obsDatetime) : 'Sem dados no SESP',
         source: IPTEndFichaFILT[0]
           ? {
-              form:
-                IPTEndFichaFILT[0]?.encounter?.form?.display ===
-                'ADULTO: SEGUIMENTO'
-                  ? 'FICHA DE SEGUIMENTO'
-                  : IPTEndFichaFILT[0]?.encounter?.form?.display ||
-                    'Sem formulário',
-              date:
-                formatDate(IPTEndFichaFILT[0]?.obsDatetime) ||
-                'Sem dados no SESP',
+              form: IPTEndFichaFILT[0]?.encounter?.form?.display === 'ADULTO: SEGUIMENTO' ? 'FICHA DE SEGUIMENTO' : (IPTEndFichaFILT[0]?.encounter?.form?.display || 'Sem formulário'),
+              date: formatDate(IPTEndFichaFILT[0]?.obsDatetime) || 'Sem dados no SESP',
             }
           : { form: 'FILT', date: '', location: '' },
       },
       {
         title: 'Tipo do último levantamento TPT',
-        value: IPTEndFichaFILT[0]?.value?.display
-          ? IPTEndFichaFILT[0]?.value?.display
-          : 'Sem dados no SESP',
+        permissionKey: 'TPT_PICKUP_TYPE',
+        isList: false,
+        value: IPTEndFichaFILT[0]?.value?.display || 'Sem dados no SESP',
         source: IPTEndFichaFILT[0]
           ? {
-              form:
-                IPTEndFichaFILT[0]?.encounter?.form?.display ===
-                'ADULTO: SEGUIMENTO'
-                  ? 'FICHA DE SEGUIMENTO'
-                  : IPTEndFichaFILT[0]?.encounter?.form?.display ||
-                    'Sem formulário',
-              date:
-                formatDate(IPTEndFichaFILT[0]?.obsDatetime) ||
-                'Sem dados no SESP',
+              form: IPTEndFichaFILT[0]?.encounter?.form?.display === 'ADULTO: SEGUIMENTO' ? 'FICHA DE SEGUIMENTO' : (IPTEndFichaFILT[0]?.encounter?.form?.display || 'Sem formulário'),
+              date: formatDate(IPTEndFichaFILT[0]?.obsDatetime) || 'Sem dados no SESP',
             }
           : { form: 'FILT', date: '', location: '' },
       },
       {
         title: 'Data de início de CTZ',
+        permissionKey: 'CTZ_START',
         isList: true,
         items:
           CTZStartFichaClinica.length > 0
             ? CTZStartFichaClinica.map((item) => ({
-                value: item.value.display
-                  ? formatDate(item.obsDatetime)
-                  : item?.value,
+                value: item.value?.display ? formatDate(item.obsDatetime) : item?.value,
                 source: {
-                  form:
-                    item.encounter?.form?.display === 'ADULTO: SEGUIMENTO'
-                      ? 'FICHA DE SEGUIMENTO'
-                      : item?.encounter?.form?.display || 'Sem dados no SESP',
+                  form: item.encounter?.form?.display === 'ADULTO: SEGUIMENTO' ? 'FICHA DE SEGUIMENTO' : (item?.encounter?.form?.display || 'Sem dados no SESP'),
                   date: formatDate(item.obsDatetime) || 'Sem dados no SESP',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA CLINICA', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA CLINICA', date: '', location: '' } }],
       },
       {
         title: 'Data do Fim de CTZ',
+        permissionKey: 'CTZ_END',
         isList: true,
         items:
           CTZEndFichaClinica.length > 0
             ? CTZEndFichaClinica.map((item) => ({
-                value: item.value.display
-                  ? formatDate(item.obsDatetime)
-                  : item?.value,
+                value: item.value?.display ? formatDate(item.obsDatetime) : item?.value,
                 source: {
-                  form:
-                    item.encounter?.form?.display === 'ADULTO: SEGUIMENTO'
-                      ? 'FICHA DE SEGUIMENTO'
-                      : item.encounter?.form?.display || 'Sem dados no SESP',
+                  form: item.encounter?.form?.display === 'ADULTO: SEGUIMENTO' ? 'FICHA DE SEGUIMENTO' : (item.encounter?.form?.display || 'Sem dados no SESP'),
                   date: formatDate(item.obsDatetime) || 'Sem dados no SESP',
                 },
               }))
-            : [
-                {
-                  value: 'Sem dados no SESP',
-                  source: { form: 'FICHA CLINICA', date: '', location: '' },
-                },
-              ],
+            : [{ value: 'Sem dados no SESP', source: { form: 'FICHA CLINICA', date: '', location: '' } }],
       },
     ];
+
+    resultadosData.value = filterByAccess(resultadosSections);
+
   } catch (error) {
     console.error('Error fetching Levantamento ARV data:', error);
   } finally {
-    loading.value = false; // Stop loading spinner
+    loading.value = false;
   }
 });
 </script>
+
 
 <style scoped>
 /* Ajuste para estilizar o cabeçalho com fundo cinza */
