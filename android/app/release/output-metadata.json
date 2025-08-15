@@ -4,14 +4,14 @@
     "type": "APK",
     "kind": "Directory"
   },
-  "applicationId": "mz.org.csaude.sespclinicalsummary",
+  "applicationId": "org.fgh.eptsclinicalsummary",
   "variantName": "release",
   "elements": [
     {
       "type": "SINGLE",
       "filters": [],
       "attributes": [],
-      "versionCode": 1,
+      "versionCode": 21003,
       "versionName": "1.11.0",
       "outputFile": "SESP Sumario Clinico-1.11.0.apk"
     }

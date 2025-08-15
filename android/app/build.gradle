@@ -1,13 +1,13 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "mz.org.csaude.sespclinicalsummary"
+    namespace "org.fgh.eptsclinicalsummary"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "mz.org.csaude.sespclinicalsummary"
+        applicationId "org.fgh.eptsclinicalsummary"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        versionCode 21003
         versionName "1.11.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {

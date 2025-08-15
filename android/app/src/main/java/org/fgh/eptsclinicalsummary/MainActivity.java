@@ -1,4 +1,4 @@
-package mz.org.csaude.sespclinicalsummary;
+package org.fgh.eptsclinicalsummary;
 
 import com.getcapacitor.BridgeActivity;
 
